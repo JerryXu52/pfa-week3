@@ -1,37 +1,101 @@
-# Procedural Cable & Hose Rig Tool — Maya 2026
+# Procedural Cable & Hose Rig Tool
 
-This tool has evolved from simple NURBS curve extrusions — a single wire swept along a hand-drawn curve, with no notion of gravity, of a bundle, or of its own geometry occupying space — into a physics-aware procedural cable and hose bundle generator that builds entire multi-strand runs from a selection; the Route B design problem it answers is that environment and hard-surface artists spend excessive time drawing, sagging and tweaking multi-strand cable bundles, and the geometry they produce frequently interpenetrates in ways that look fine in the viewport but surface at final render, where the remedy is a costly manual re-route; the chosen solution combines catenary curve mathematics for gravity sagging, a Fermat (sunflower) spiral for optimal radial cross-section distribution, and iterative dynamic relaxation that measures the built geometry and adjusts it until every strand is clear of its neighbours, allowing collision-free, customisable cable bundles in seconds rather than by hand.
+**Assessment 2 · Route B** · Autodesk Maya · `CableHoseRigTool.py`
 
-## Core Features & Habits
+A Python tool for Autodesk Maya that procedurally generates realistic hanging cable and hose bundles between selected 3D anchor points. Select two or more locators, press one button, and the tool builds a gravity-correct, collision-free bundle — complete with material and a non-destructive cleanup system.
 
-**Length Stagger (0.0–10.0)** trims each strand's curve parameters `(t_start, t_end)`. At 0 every strand returns exactly `(0.0, 1.0)`; at 10 each end is trimmed up to 30%. Trimmed strands are sampled from the full-span catenary, so a short strand still lies on the curve it would have followed.
+## Key Features
 
-**Sunflower spiral and iterative relaxation** place strands by golden angle (≈137.508°), scaled to guarantee `(radius × 2) + margin` of clearance. Because packing alone cannot stop one strand sagging *through* another, up to 24 passes measure segment-to-segment distance and either widen the bundle or ease the slack. Verified: **0 intersections across 240 extreme and 148 realistic configurations.**
+- **Procedural catenary curves** — every span hangs on a true catenary, the curve a real chain makes under gravity, with sag expressed as a fraction of span length so it behaves consistently at any scale.
+- **Sunflower bundle packing** — strands are distributed on a Fermat spiral at the golden angle (≈137.5°), the arrangement that spaces points most evenly for a given radius.
+- **Collision relaxation** — the tool measures true segment-to-segment distance on the built geometry and iteratively widens the bundle or eases the slack until every strand clears its neighbours. Verified at 0 intersections across 240 extreme and 148 realistic configurations.
+- **Spiral twist, length stagger and slack variation** — rotate the bundle along its length, trim strands to different lengths for a layered look, or give each strand its own sag.
+- **Custom material manager** — a colour picker drives one shared Lambert (`cableMat_custom`), updated in place rather than duplicated on each run.
+- **Dual-mode execution** — runs as a Maya UI, or launches itself into a running Maya session from any system terminal over TCP.
+- **Single-chunk undo and safe cleanup** — an entire bundle undoes with one Ctrl+Z, and cleanup removes only the tool's own prefixed nodes, never the artist's work.
 
-**Native `colorSliderGrp`** drives one Lambert, `cableMat_custom`, updated in place rather than duplicated each run.
+## Prerequisites & Requirements
 
-**Habit 1 — single-step undo.** All scene changes run in one undo chunk inside `try...finally`: a whole bundle undoes with one Ctrl+Z, and the chunk closes even on exception.
+| Requirement | Details |
+|---|---|
+| **Software** | Autodesk Maya 2022 or later (Python 3). Developed and tested on Maya 2026. |
+| **Terminal launcher** | Python 3 on your system path. |
+| **Dependencies** | None. Built entirely on the Python standard library (`math`, `random`, `colorsys`, `socket`, `base64`, `argparse`, `os`, `sys`) and `maya.cmds`. |
+
+> **Note on Python 2.7:** the terminal launcher uses Python 3-only features (`open(..., encoding=)` and `ConnectionRefusedError`), so it will not run under Python 2. Maya 2022 and later ship with Python 3, which covers every currently supported release.
+
+## How to Run
+
+### Method 1 — Direct execution inside Maya
+
+1. Open the **Script Editor** (`Windows ▸ General Editors ▸ Script Editor`) and switch to a **Python** tab.
+2. Paste the contents of `CableHoseRigTool.py` and press **Execute**. The tool window opens automatically.
+
+To load it as a module instead:
 
 ```python
-cmds.undoInfo(openChunk=True, chunkName="GenerateCableRig")
-try:
-    ...
-finally:
-    cmds.undoInfo(closeChunk=True)
+import sys
+sys.path.append(r"/path/to/folder/containing/the/script")
+
+import CableHoseRigTool
+CableHoseRigTool.show_ui()
 ```
 
-**Habit 2 — safe deletion.** Output is confined to `CableRig_GRP` → `CableGeo_GRP` / `CableCurves_GRP`, with prefixes `cableGeo_`, `cableCrv_`, `cableMat_`. Cleanup sweeps by explicit prefix only; no destructive wildcard appears in the file. A planted `userImportantCube` and `lambert1` survive clearing.
+### Method 2 — Remote socket launcher
 
-## Boundary Testing & Deliberate Failure Handling
+**Step 1.** Inside Maya, open Command Port 7002 once (Python tab):
 
-The tool separates two kinds of boundary, and only one is an exception.
+```python
+import maya.cmds as cmds
 
-**A — Physical volume constraint.** Beta Extreme Mode on, Cable Radius 5.0, Bundle Spread 0.2. Five tubes of radius 5.0 need 10.02 units between centrelines, so strands would overlap at the anchor roots. The tool detects this at the packing stage and scales the bundle to the minimum viable radius. **No exception is raised**; the geometry is built and still collision-free. The console reports in amber: `[WARNING] … Cable radius too large for bundle spread, collision avoidance enforced. Set Bundle Spread to 13.748 or more…`, naming the corrective value.
+if not cmds.commandPort("127.0.0.1:7002", query=True):
+    cmds.commandPort(name="127.0.0.1:7002", sourceType="mel")
+```
 
-**B — Unsatisfiable request.** `CableRigError` is reserved for what the tool refuses to build: radius above 50.0, sag above 8.0, or over 24,000 curve samples. It is caught in `_on_generate` and shown in the console; a catch-all handler reports anything unforeseen in red. Maya never enters an unhandled exception state, and no corrupted geometry is written.
+**Step 2.** From any system terminal, in the script's folder:
 
-**Reflection.** I tried extreme cable thickness with minimal spread; collision avoidance was enforced, the bundle scaled itself, and the console named the value to set. Pushing further crossed from *correctable* to *refuse to build*, where `CableRigError` was raised and caught. Separating those cases was the key lesson: an input the tool can fix itself should not carry the same severity as one it cannot.
+```bash
+python CableHoseRigTool.py
+```
 
-## Demo Recording
+Use `python3` instead if `python` on your system still points to Python 2. The script Base64-encodes its own source, wraps it in a single MEL `python()` call — which eliminates every quoting and newline hazard — and posts it to Maya over TCP. The UI then appears inside Maya.
 
-[Watch Assessment 2 Demo Video](https://youtu.be/mX6PaW_Dmis)
+Optional flags: `--host`, `--port`, `--timeout`. Run with `--help` for details.
+
+### Using the tool
+
+Select **two or more** transforms or locators in anchor order — cables are built between consecutive pairs, so selecting A, B, C produces two spans. Adjust the sliders and press **Generate Cable Rig**. **Clear Rig** removes everything the tool created and nothing else.
+
+## 10 Lines Code Explanation
+
+Here is an explanation of 10 fundamental lines from `CableHoseRigTool.py` in plain English:
+
+1. `import math`
+   - **Explanation:** Imports Python's built-in math module so the script can use mathematical functions like square roots and sine/cosine to calculate cable curves and spiral twists.
+
+2. `MAYA_HOST = "127.0.0.1"`
+   - **Explanation:** Stores the local IP address so the script knows to connect to the Maya application running on the same computer.
+
+3. `WINDOW_NAME = "cableHoseRigToolWin"`
+   - **Explanation:** Sets a unique text ID for the window so the tool can check for and close existing copies before opening a new one.
+
+4. `positions = []`
+   - **Explanation:** Creates an empty list to store the 3D coordinates of all the selected anchor points in the Maya scene.
+
+5. `def vector_sub(a, b):`
+   - **Explanation:** Defines a helper function that takes two 3D points and subtracts one from the other.
+
+6. `return (a[0] - b[0], a[1] - b[1], a[2] - b[2])`
+   - **Explanation:** Subtracts the X, Y, and Z numbers of the two points individually and sends the resulting 3D vector back.
+
+7. `count = 0`
+   - **Explanation:** Sets a counter variable to zero so we can start counting how many invalid or overlapping anchors exist.
+
+8. `count += 1`
+   - **Explanation:** Increases the counter number by 1 every time the script finds a pair of anchors sitting in the exact same spot.
+
+9. `if len(positions) < 2:`
+   - **Explanation:** Checks if fewer than two anchors were collected so the tool can safely stop before trying to build a cable without enough points.
+
+10. `print("[CableHoseRigTool] " + text)`
+    - **Explanation:** Outputs a status message with a clear tag into the Maya Script Editor so users can see what the tool is doing.
