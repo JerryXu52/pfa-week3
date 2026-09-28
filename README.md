@@ -1,6 +1,5 @@
 # Procedural Cable & Hose Rig Tool
 
-**Assessment 2 · Route B** · Autodesk Maya · `CableHoseRigTool.py`
 
 A Python tool for Autodesk Maya that procedurally generates realistic hanging cable and hose bundles between selected 3D anchor points. Select two or more locators, press one button, and the tool builds a gravity-correct, collision-free bundle — complete with material and a non-destructive cleanup system.
 
@@ -99,3 +98,7 @@ Here is an explanation of 10 fundamental lines from `CableHoseRigTool.py` in pla
 
 10. `print("[CableHoseRigTool] " + text)`
     - **Explanation:** Outputs a status message with a clear tag into the Maya Script Editor so users can see what the tool is doing.
+
+## Loop Explanation
+
+In `CableHoseRigTool.py`, loops are primarily used in functions like `generate_cable_rig`, `relax_bundle`, `build_bundle`, and `sample_span_params` to automate repetitive 3D modeling tasks[cite: 2]. Specifically, `generate_cable_rig` uses a `for span_index in range(span_count)` loop to iterate through all selected Maya anchor points and build cable segments between each pair[cite: 2]. Inside each segment, `build_bundle` uses a `for offset in offsets` loop to repeat the creation process for every strand in a bundle[cite: 2], while `sample_span_params` runs a `for i in range(resolution + 1)` loop to calculate every individual 3D math coordinate along the curve[cite: 2]. Furthermore, `relax_bundle` uses a `for attempt in range(RELAX_MAX_PASSES)` loop to repeatedly test and adjust strand positions until all physical collisions between cables are resolved[cite: 2].
